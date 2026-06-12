@@ -1,9 +1,16 @@
 const STORAGE_KEY = "uestc-padel-state-v1";
 const ADMIN_KEY = "uestc-padel-admin";
-const ADMIN_PASSWORD = "uestc";
+const LOCAL_ADMIN_PASSWORD = "uestc";
+const API_STATE_URL = "./api/state";
+const API_ADMIN_LOGIN_URL = "./api/admin/login";
+const POLL_INTERVAL_MS = 3000;
 
-const state = loadState();
-let isAdmin = localStorage.getItem(ADMIN_KEY) === "true";
+const state = { events: [] };
+let remoteVersion = 0;
+let isOnlineState = false;
+let saveChain = Promise.resolve();
+const storedAdminToken = localStorage.getItem(ADMIN_KEY);
+let isAdmin = Boolean(storedAdminToken && (storedAdminToken.includes(".") || storedAdminToken === "local-admin"));
 let currentEventId = null;
 
 const els = {
@@ -45,7 +52,7 @@ const els = {
   template: document.querySelector("#eventTemplate"),
 };
 
-function loadState() {
+function loadLocalState() {
   const fallback = { events: [] };
   try {
     return JSON.parse(localStorage.getItem(STORAGE_KEY)) || fallback;
@@ -55,7 +62,92 @@ function loadState() {
 }
 
 function persist() {
+  if (!isOnlineState) {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    return Promise.resolve();
+  }
+
+  saveChain = saveChain.then(saveRemoteState).catch((error) => {
+    console.error(error);
+  });
+  return saveChain;
+}
+
+function applyStateSnapshot(snapshot) {
+  state.events = Array.isArray(snapshot?.events) ? snapshot.events : [];
+}
+
+function isEditingField() {
+  const tag = document.activeElement?.tagName;
+  return ["INPUT", "SELECT", "TEXTAREA"].includes(tag);
+}
+
+async function fetchRemoteState({ silent = false } = {}) {
+  const response = await fetch(API_STATE_URL, { cache: "no-store" });
+  if (!response.ok) throw new Error(`State fetch failed: ${response.status}`);
+  const data = await response.json();
+  if (data.version !== remoteVersion || !isOnlineState) {
+    applyStateSnapshot(data.state);
+    remoteVersion = data.version;
+    isOnlineState = true;
+    if (!silent) localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    render();
+  }
+}
+
+async function saveRemoteState() {
+  const response = await fetch(API_STATE_URL, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+      ...(isAdmin ? { Authorization: `Bearer ${localStorage.getItem(ADMIN_KEY) || ""}` } : {}),
+    },
+    body: JSON.stringify({ state, version: remoteVersion }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (response.status === 409) {
+    applyStateSnapshot(data.state);
+    remoteVersion = data.version;
+    render();
+    alert("数据已被其他设备更新，请重新操作。");
+    return;
+  }
+  if (response.status === 403) {
+    alert("这个操作需要管理员权限。");
+    await fetchRemoteState({ silent: true }).catch(() => {});
+    return;
+  }
+  if (!response.ok) throw new Error(data.error || `State save failed: ${response.status}`);
+  applyStateSnapshot(data.state);
+  remoteVersion = data.version;
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+}
+
+async function bootstrap() {
+  const localState = loadLocalState();
+  applyStateSnapshot(localState);
+  render();
+  try {
+    const response = await fetch(API_STATE_URL, { cache: "no-store" });
+    if (!response.ok) throw new Error(`State fetch failed: ${response.status}`);
+    const data = await response.json();
+    isOnlineState = true;
+    remoteVersion = data.version;
+    if (data.version === 0 && !data.state?.events?.length && localState.events?.length) {
+      applyStateSnapshot(localState);
+      await saveRemoteState();
+    } else {
+      applyStateSnapshot(data.state);
+    }
+    render();
+    window.setInterval(() => {
+      if (document.hidden || isEditingField() || !els.eventForm.classList.contains("hidden")) return;
+      fetchRemoteState({ silent: true }).catch(() => {});
+    }, POLL_INTERVAL_MS);
+  } catch (error) {
+    console.warn("Using local storage fallback.", error);
+    isOnlineState = false;
+  }
 }
 
 function uid(prefix) {
@@ -779,16 +871,33 @@ els.adminToggle.addEventListener("click", () => {
     els.adminPanel.classList.toggle("hidden");
   }
 });
-els.adminLogin.addEventListener("click", () => {
+els.adminLogin.addEventListener("click", async () => {
   if (isAdmin) {
     logoutAdmin();
-  } else if (els.adminPassword.value === ADMIN_PASSWORD) {
-    isAdmin = true;
-    localStorage.setItem(ADMIN_KEY, "true");
-    els.adminPassword.value = "";
-    els.adminPanel.classList.add("hidden");
   } else {
-    alert("管理员密码不正确。");
+    try {
+      const response = await fetch(API_ADMIN_LOGIN_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: els.adminPassword.value }),
+      });
+      if (!response.ok) throw new Error("remote login failed");
+      const data = await response.json();
+      isAdmin = true;
+      localStorage.setItem(ADMIN_KEY, data.token);
+      els.adminPassword.value = "";
+      els.adminPanel.classList.add("hidden");
+    } catch {
+      const isLocal = location.protocol === "file:" || location.hostname === "127.0.0.1" || location.hostname === "localhost";
+      if (isLocal && els.adminPassword.value === LOCAL_ADMIN_PASSWORD) {
+        isAdmin = true;
+        localStorage.setItem(ADMIN_KEY, "local-admin");
+        els.adminPassword.value = "";
+        els.adminPanel.classList.add("hidden");
+      } else {
+        alert("管理员密码不正确。");
+      }
+    }
   }
   render();
 });
@@ -817,4 +926,4 @@ if ("serviceWorker" in navigator) {
   navigator.serviceWorker.register("./sw.js").catch(() => {});
 }
 
-render();
+bootstrap();

@@ -1,4 +1,4 @@
-const CACHE_NAME = "uestc-padel-v11";
+const CACHE_NAME = "uestc-padel-v12";
 const ASSETS = ["./", "./index.html", "./styles.css", "./app.js", "./manifest.json", "./icon.svg"];
 
 self.addEventListener("install", (event) => {
@@ -15,6 +15,8 @@ self.addEventListener("activate", (event) => {
 
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
+  const url = new URL(event.request.url);
+  if (url.pathname.startsWith("/api/")) return;
   event.respondWith(
     fetch(event.request)
       .then((response) => {

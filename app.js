@@ -74,6 +74,10 @@ function eventEndTime(event) {
   return event.endTime || new Date(new Date(eventStartTime(event)).getTime() + 12 * 60 * 60 * 1000).toISOString();
 }
 
+function eventAutoEndTime(event) {
+  return new Date(new Date(eventEndTime(event)).getTime() + 12 * 60 * 60 * 1000).toISOString();
+}
+
 function eventTimeLabel(event) {
   return `${formatDateTime(eventStartTime(event))} - ${formatDateTime(eventEndTime(event))}`;
 }
@@ -119,22 +123,26 @@ function normalizeScore(event, score) {
 
 function eventStatus(event) {
   const scheduled = new Date(eventStartTime(event)).getTime();
-  const ended = nowTs() > new Date(eventEndTime(event)).getTime();
-  if (ended) return "locked";
+  const ended = event.endedAt || nowTs() > new Date(eventAutoEndTime(event)).getTime();
+  if (ended) return "ended";
   if (event.startedAt || scheduled <= nowTs()) return "running";
   return "draft";
 }
 
 function statusText(status) {
-  return { draft: "报名中", running: "进行中", locked: "已锁定" }[status];
+  return { draft: "报名中", running: "进行中", ended: "已结束" }[status];
 }
 
 function canEditPlayers(event) {
-  return eventStatus(event) === "draft";
+  return eventStatus(event) !== "ended";
 }
 
 function canEditScores(event) {
-  return eventStatus(event) === "running";
+  return eventStatus(event) !== "ended" && Boolean(event.startedAt);
+}
+
+function canEditMatches(event) {
+  return eventStatus(event) !== "ended" && Boolean(event.startedAt);
 }
 
 function ensureEventStarted(event) {
@@ -195,6 +203,7 @@ function buildEventRanking(event) {
     const teamAWon = scoreA > scoreB;
     for (const id of match.teamA) {
       const row = byId.get(id);
+      if (!row) continue;
       row.scored += scoreA;
       row.net += scoreA - scoreB;
       row.wins += teamAWon ? 1 : 0;
@@ -202,6 +211,7 @@ function buildEventRanking(event) {
     }
     for (const id of match.teamB) {
       const row = byId.get(id);
+      if (!row) continue;
       row.scored += scoreB;
       row.net += scoreB - scoreA;
       row.wins += teamAWon ? 0 : 1;
@@ -224,7 +234,7 @@ function buildEventRanking(event) {
 function buildGlobalLeaderboard(sortBy = "points") {
   const totals = new Map();
   for (const event of state.events) {
-    if (!event.startedAt) continue;
+    if (eventStatus(event) !== "ended") continue;
     for (const row of buildEventRanking(event)) {
       const total = totals.get(row.id) || { id: row.id, events: 0, points: 0, scored: 0 };
       total.events += 1;
@@ -333,14 +343,15 @@ function renderEventDetail() {
   els.detailActions.classList.toggle("hidden", !isAdmin);
   if (isAdmin) {
     els.detailActions.append(
-      actionButton("编辑活动", () => showEventForm(event), status !== "draft"),
-      actionButton("删除活动", () => deleteEvent(event.id), false, "danger-btn"),
+      actionButton("编辑活动", () => showEventForm(event), status === "ended"),
+      actionButton("结束活动", () => endEvent(event.id), status === "ended", "muted-btn"),
+      actionButton("删除活动", () => deleteEvent(event.id), status === "ended", "danger-btn"),
     );
   }
 
   els.eventDetailBody.innerHTML = "";
   const startActions = el("div", "inline-actions");
-  startActions.append(actionButton("开始活动", () => startEvent(event), status === "locked" || event.players.length !== 4 || Boolean(event.startedAt)));
+  startActions.append(actionButton("开始活动", () => startEvent(event), status === "ended" || event.players.length < 4 || Boolean(event.startedAt)));
   els.eventDetailBody.append(startActions, renderPlayers(event), renderMatches(event), renderEventRanking(event));
 }
 
@@ -403,51 +414,156 @@ function showInlinePlayerForm(slot, eventId) {
 
 function renderMatches(event) {
   const section = el("section", "subsection");
-  section.append(el("h3", "", "场次"));
+  const head = el("div", "subsection-head");
+  head.append(el("h3", "", "场次"));
+  section.append(head);
   if (!event.startedAt) {
     section.append(el("div", "empty", "活动开始后自动生成三场比赛。"));
     return section;
   }
 
   const names = new Map(event.players.map((player) => [player.id, player.id]));
-  for (const match of event.matches || []) {
+  (event.matches || []).forEach((match, index) => {
     const card = el("div", "match-card");
-    const teamA = match.teamA.map((id) => names.get(id)).join(" / ");
-    const teamB = match.teamB.map((id) => names.get(id)).join(" / ");
-    card.innerHTML = `
-      <div class="match-title"><span>${match.label}</span><span>${teamA} vs ${teamB}</span></div>
-      <div class="score-inputs">
+    const teamA = match.teamA.map((id) => names.get(id) || id).join(" / ");
+    const teamB = match.teamB.map((id) => names.get(id) || id).join(" / ");
+    const title = el("div", "match-title");
+    title.append(el("span", "", match.label || `第 ${index + 1} 场`), el("span", "", `${teamA} vs ${teamB}`));
+    card.append(title);
+    if (match.scoreA !== "" && match.scoreB !== "" && !match.editing) {
+      const scoreLine = el("div", "score-display");
+      scoreLine.append(el("span", "", teamA), el("strong", "", `${match.scoreA} : ${match.scoreB}`), el("span", "", teamB));
+      card.append(scoreLine);
+      if (canEditScores(event)) {
+        const actions = el("div", "match-actions");
+        actions.append(
+          actionButton("编辑", () => editMatchScore(event, match.id), false, "ghost-btn"),
+          actionButton("删除", () => removeMatch(event.id, match.id), false, "danger-btn"),
+        );
+        card.append(actions);
+      }
+    } else {
+      const row = el("div", "score-inputs");
+      row.innerHTML = `
         <label>${teamA}<input inputmode="numeric" min="0" type="number" value="${match.scoreA}"></label>
         <strong>:</strong>
         <label>${teamB}<input inputmode="numeric" min="0" type="number" value="${match.scoreB}"></label>
-        <button type="button">保存</button>
-      </div>
-    `;
-    const [scoreA, scoreB] = card.querySelectorAll("input");
-    const button = card.querySelector("button");
-    scoreA.disabled = scoreB.disabled = button.disabled = !canEditScores(event);
-    button.addEventListener("click", () => {
-      match.scoreA = scoreA.value === "" ? "" : Number(scoreA.value);
-      match.scoreB = scoreB.value === "" ? "" : Number(scoreB.value);
-      persist();
-      render();
-    });
+      `;
+      const saveButton = actionButton("保存", () => saveMatchScore(event, match.id, row), !canEditScores(event));
+      row.append(saveButton);
+      card.append(row);
+      if (canEditScores(event)) {
+        const actions = el("div", "match-actions");
+        actions.append(actionButton("删除", () => removeMatch(event.id, match.id), false, "danger-btn"));
+        card.append(actions);
+      }
+    }
     section.append(card);
-  }
-  if (canEditScores(event)) {
-    const actions = el("div", "inline-actions");
-    actions.append(actionButton("保存全部比分", () => saveAllScores(event, section), false, "muted-btn"));
-    section.append(actions);
+  });
+  if (canEditMatches(event) && event.players.length >= 4) {
+    section.append(renderAddMatchSlot(event.id));
   }
   return section;
 }
 
-function saveAllScores(event, section) {
-  const cards = [...section.querySelectorAll(".match-card")];
-  cards.forEach((card, index) => {
-    const [scoreA, scoreB] = card.querySelectorAll("input");
-    event.matches[index].scoreA = scoreA.value === "" ? "" : Number(scoreA.value);
-    event.matches[index].scoreB = scoreB.value === "" ? "" : Number(scoreB.value);
+function renderAddMatchSlot(eventId) {
+  const slot = el("div", "empty-match-card");
+  slot.append(actionButton("增加场次", () => showInlineMatchForm(slot, eventId), false, "ghost-btn"));
+  return slot;
+}
+
+function showInlineMatchForm(slot, eventId) {
+  const event = state.events.find((item) => item.id === eventId);
+  if (!event) return;
+  slot.innerHTML = "";
+  const form = el("form", "inline-match-form");
+  const options = event.players.map((player) => `<option value="${escapeHtml(player.id)}">${escapeHtml(player.id)}</option>`).join("");
+  form.innerHTML = `
+    <label>A1<select name="a1">${options}</select></label>
+    <label>A2<select name="a2">${options}</select></label>
+    <label>B1<select name="b1">${options}</select></label>
+    <label>B2<select name="b2">${options}</select></label>
+    <div class="inline-player-actions">
+      <button type="submit">保存</button>
+      <button class="ghost-btn" type="button">取消</button>
+    </div>
+  `;
+  form.addEventListener("submit", (submitEvent) => {
+    submitEvent.preventDefault();
+    const data = new FormData(form);
+    createMatch(eventId, [String(data.get("a1")), String(data.get("a2"))], [String(data.get("b1")), String(data.get("b2"))]);
+  });
+  form.querySelector(".ghost-btn").addEventListener("click", () => {
+    slot.replaceWith(renderAddMatchSlot(eventId));
+  });
+  slot.append(form);
+}
+
+function saveMatchScore(event, matchId, row) {
+  const match = event.matches.find((item) => item.id === matchId);
+  if (!match) return;
+  const [scoreA, scoreB] = row.querySelectorAll("input");
+  match.scoreA = scoreA.value === "" ? "" : Number(scoreA.value);
+  match.scoreB = scoreB.value === "" ? "" : Number(scoreB.value);
+  match.editing = false;
+  persist();
+  render();
+}
+
+function editMatchScore(event, matchId) {
+  const match = event.matches.find((item) => item.id === matchId);
+  if (!match) return;
+  match.editing = true;
+  persist();
+  render();
+}
+
+function createMatch(eventId, teamA, teamB) {
+  const event = state.events.find((item) => item.id === eventId);
+  if (!event || event.players.length < 4) return;
+  const names = event.players.map((player) => player.id);
+  if (!validateMatchTeams(names, teamA, teamB)) return;
+  event.matches = event.matches || [];
+  event.matches.push({
+    id: uid("match"),
+    label: `第 ${event.matches.length + 1} 场`,
+    teamA,
+    teamB,
+    scoreA: "",
+    scoreB: "",
+    editing: true,
+  });
+  persist();
+  render();
+}
+
+function validateMatchTeams(players, teamA, teamB) {
+  const selected = [...teamA, ...teamB];
+  if (teamA.length !== 2 || teamB.length !== 2) {
+    alert("每队需要选择 2 名球员。");
+    return false;
+  }
+  if (new Set(selected).size !== 4) {
+    alert("同一场比赛中 4 名球员不能重复。");
+    return false;
+  }
+  const missing = selected.filter((name) => !players.includes(name));
+  if (missing.length) {
+    alert(`这些球员不在成员列表中：${missing.join("、")}`);
+    return false;
+  }
+  return true;
+}
+
+function removeMatch(eventId, matchId) {
+  const event = state.events.find((item) => item.id === eventId);
+  if (!event) return;
+  const match = event.matches.find((item) => item.id === matchId);
+  if (!match) return;
+  if (!confirm(`确定删除「${match.label}」吗？`)) return;
+  event.matches = event.matches.filter((item) => item.id !== matchId);
+  event.matches.forEach((item, index) => {
+    item.label = `第 ${index + 1} 场`;
   });
   persist();
   render();
@@ -460,17 +576,10 @@ function renderEventRanking(event) {
     section.append(el("div", "empty", "活动开始后显示排行。"));
     return section;
   }
-  for (const row of buildEventRanking(event)) {
-    const item = el("div", "rank-row");
-    const info = el("div", "player-info");
-    info.append(createAvatar(row.id), el("span", "", `${row.id} · 胜 ${row.wins} · 净胜 ${row.net} · 得分 ${row.scored}`));
-    item.append(
-      el("span", "badge", `#${row.rank}`),
-      info,
-      el("strong", "", `${row.totalPoints} 分`),
-    );
-    section.append(item);
-  }
+  section.append(renderRankingTable({
+    columns: ["排名", "球员", "胜", "净胜", "得分", "预计获得积分"],
+    rows: buildEventRanking(event).map((row) => [row.rank, row.id, row.wins, row.net, row.scored, row.totalPoints]),
+  }));
   return section;
 }
 
@@ -478,20 +587,32 @@ function renderGlobalLeaderboard() {
   els.globalLeaderboard.innerHTML = "";
   const rows = buildGlobalLeaderboard(els.globalSort.value);
   if (!rows.length) {
-    els.globalLeaderboard.innerHTML = '<div class="empty">还没有已开始的活动。</div>';
+    els.globalLeaderboard.innerHTML = '<div class="empty">还没有已结束的活动。</div>';
     return;
   }
-  rows.forEach((row, index) => {
-    const item = el("div", "rank-row");
-    const info = el("div", "player-info");
-    info.append(createAvatar(row.id), el("span", "", `${row.id} · ${row.events} 次 · 总得分 ${row.scored}`));
-    item.append(
-      el("span", "badge", `#${index + 1}`),
-      info,
-      el("strong", "", `${row.points} 分`),
-    );
-    els.globalLeaderboard.append(item);
+  els.globalLeaderboard.append(renderRankingTable({
+    columns: ["排名", "球员", "活动", "总得分", "总积分"],
+    rows: rows.map((row, index) => [index + 1, row.id, row.events, row.scored, row.points]),
+  }));
+}
+
+function renderRankingTable({ columns, rows }) {
+  const table = el("div", `rank-table rank-table-${columns.length}`);
+  const header = el("div", "rank-table-row rank-table-head");
+  columns.forEach((column) => header.append(el("span", "", column)));
+  table.append(header);
+  rows.forEach((row) => {
+    const line = el("div", "rank-table-row");
+    line.append(el("span", "rank-index", `#${row[0]}`));
+    const player = el("span", "rank-player");
+    player.append(createAvatar(row[1]), el("strong", "", row[1]));
+    line.append(player);
+    row.slice(2).forEach((value, index) => {
+      line.append(el("span", index === row.length - 3 ? "rank-points" : "", String(value)));
+    });
+    table.append(line);
   });
+  return table;
 }
 
 function fillEventForm(event) {
@@ -537,6 +658,7 @@ function saveEventFromForm() {
     matches: existing?.matches || [],
     createdAt: existing?.createdAt || new Date().toISOString(),
     startedAt: existing?.startedAt || null,
+    endedAt: existing?.endedAt || null,
   };
   if (existing) {
     Object.assign(existing, payload);
@@ -546,6 +668,15 @@ function saveEventFromForm() {
   persist();
   clearEventForm();
   showEventDetail(payload.id);
+  render();
+}
+
+function endEvent(id) {
+  const event = state.events.find((item) => item.id === id);
+  if (!event) return;
+  if (!confirm("确定结束这个活动吗？结束后所有数据不能再修改。")) return;
+  event.endedAt = new Date().toISOString();
+  persist();
   render();
 }
 
@@ -579,8 +710,16 @@ function addPlayer(eventId, id, gender) {
 function removePlayer(eventId, playerId) {
   const event = state.events.find((item) => item.id === eventId);
   if (!event) return;
-  if (!confirm(`确定删除球员「${playerId}」吗？`)) return;
+  const relatedMatches = (event.matches || []).filter((match) => match.teamA.includes(playerId) || match.teamB.includes(playerId));
+  const suffix = relatedMatches.length ? `\n该球员参与的 ${relatedMatches.length} 个场次也会一起删除。` : "";
+  if (!confirm(`确定删除球员「${playerId}」吗？${suffix}`)) return;
   event.players = event.players.filter((player) => player.id !== playerId);
+  if (relatedMatches.length) {
+    event.matches = event.matches.filter((match) => !match.teamA.includes(playerId) && !match.teamB.includes(playerId));
+    event.matches.forEach((match, index) => {
+      match.label = `第 ${index + 1} 场`;
+    });
+  }
   persist();
   render();
 }
@@ -598,6 +737,14 @@ function el(tag, className = "", text = "") {
   if (className) node.className = className;
   if (text) node.textContent = text;
   return node;
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
 }
 
 function formatDate(value) {

@@ -316,6 +316,16 @@ main {
   background: #fbfcfb;
 }
 
+.empty-match-card {
+  display: grid;
+  place-items: center;
+  min-height: 70px;
+  padding: 10px;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  background: #fbfcfb;
+}
+
 .join-player-btn {
   min-width: 112px;
   background: var(--surface-soft);
@@ -327,6 +337,14 @@ main {
   display: grid;
   width: 100%;
   grid-template-columns: 1fr 96px auto;
+  gap: 8px;
+  align-items: end;
+}
+
+.inline-match-form {
+  display: grid;
+  width: 100%;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) auto;
   gap: 8px;
   align-items: end;
 }
@@ -442,6 +460,85 @@ main {
   text-align: center;
 }
 
+.score-display {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 10px;
+  align-items: center;
+  padding: 10px;
+  border-radius: 8px;
+  background: var(--surface-soft);
+  text-align: center;
+}
+
+.score-display strong {
+  font-size: 22px;
+  color: var(--primary-dark);
+}
+
+.match-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.rank-table {
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: white;
+}
+
+.rank-table-row {
+  display: grid;
+  grid-template-columns: 54px minmax(150px, 1.5fr) repeat(4, minmax(64px, 0.7fr));
+  gap: 8px;
+  align-items: center;
+  min-width: 620px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.rank-table-5 .rank-table-row {
+  grid-template-columns: 54px minmax(150px, 1.5fr) repeat(3, minmax(72px, 0.7fr));
+  min-width: 540px;
+}
+
+.rank-table-row:last-child {
+  border-bottom: 0;
+}
+
+.rank-table-head {
+  background: var(--surface-soft);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.rank-table-row > span:not(.rank-player) {
+  text-align: right;
+}
+
+.rank-table-row > span:first-child {
+  text-align: left;
+}
+
+.rank-player {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 10px;
+}
+
+.rank-player strong {
+  overflow-wrap: anywhere;
+}
+
+.rank-points {
+  color: var(--primary-dark);
+  font-weight: 800;
+}
+
 .empty {
   padding: 18px;
   border: 1px dashed var(--line);
@@ -459,7 +556,12 @@ main {
   .panel-row,
   .match-row,
   .inline-player-form,
+  .inline-match-form,
   .score-inputs {
+    grid-template-columns: 1fr;
+  }
+
+  .score-display {
     grid-template-columns: 1fr;
   }
 

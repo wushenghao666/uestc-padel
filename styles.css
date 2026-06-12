@@ -523,6 +523,11 @@ main {
   text-align: left;
 }
 
+.rank-table .rank-table-head > span:nth-child(2) {
+  text-align: left;
+  padding-left: 46px;
+}
+
 .rank-player {
   display: flex;
   align-items: center;
@@ -563,6 +568,33 @@ main {
 
   .score-display {
     grid-template-columns: 1fr;
+  }
+
+  .rank-table-row {
+    grid-template-columns: 42px minmax(104px, 1fr) repeat(4, minmax(38px, 0.5fr));
+    gap: 6px;
+    min-width: 0;
+    padding: 8px 10px;
+  }
+
+  .rank-table-5 .rank-table-row {
+    grid-template-columns: 42px minmax(104px, 1fr) repeat(3, minmax(48px, 0.5fr));
+    min-width: 0;
+  }
+
+  .rank-player {
+    gap: 6px;
+  }
+
+  .rank-table .avatar {
+    width: 30px;
+    height: 30px;
+    padding: 3px;
+    border-radius: 7px;
+  }
+
+  .rank-table .rank-table-head > span:nth-child(2) {
+    padding-left: 36px;
   }
 
   .inline-player-actions {

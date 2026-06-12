@@ -82,6 +82,36 @@ function scoreModeLabel(event) {
   return event.scoreMode === "sets" ? `${event.scoreTarget} 局制` : `抢 ${event.scoreTarget} 分`;
 }
 
+function hashName(name) {
+  let hash = 2166136261;
+  for (let index = 0; index < name.length; index += 1) {
+    hash ^= name.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+function createAvatar(name) {
+  const hash = hashName(name || "player");
+  const avatar = el("span", "avatar");
+  avatar.title = name;
+  avatar.setAttribute("aria-label", `${name} 的头像`);
+  avatar.style.setProperty("--avatar-bg", `hsl(${hash % 360} 72% 88%)`);
+  avatar.style.setProperty("--avatar-fg", `hsl(${(hash >>> 8) % 360} 72% 42%)`);
+  avatar.style.setProperty("--avatar-accent", `hsl(${(hash >>> 16) % 360} 82% 52%)`);
+
+  for (let row = 0; row < 5; row += 1) {
+    for (let col = 0; col < 5; col += 1) {
+      const mirrorCol = col > 2 ? 4 - col : col;
+      const bit = (hash >> ((row * 3 + mirrorCol) % 24)) & 1;
+      const pixel = el("i");
+      if (bit || (row === 1 && col === 2)) pixel.className = (row + col + hash) % 5 === 0 ? "accent" : "filled";
+      avatar.append(pixel);
+    }
+  }
+  return avatar;
+}
+
 function normalizeScore(event, score) {
   const raw = Number(score) || 0;
   return event.scoreMode === "sets" ? raw * 4 : raw;
@@ -316,7 +346,12 @@ function renderEventDetail() {
 
 function renderPlayers(event) {
   const section = el("section", "subsection");
-  section.append(el("h3", "", `球员 ${event.players.length}/${event.size}`));
+  const head = el("div", "subsection-head");
+  head.append(el("h3", "", `球员 ${event.players.length}/${event.size}`));
+  if (canEditPlayers(event) && event.players.length < event.size) {
+    head.append(actionButton("+", () => addPlayerFromPrompt(event.id), false, "add-player-btn"));
+  }
+  section.append(head);
 
   const list = el("div", "list");
   if (!event.players.length) {
@@ -324,30 +359,15 @@ function renderPlayers(event) {
   }
   for (const player of event.players) {
     const row = el("div", "list-row");
-    row.append(el("span", "badge", player.id.slice(0, 2).toUpperCase()), el("strong", "", player.id), el("span", "gender", player.gender));
+    const info = el("div", "player-info");
+    info.append(createAvatar(player.id), el("strong", "", player.id), el("span", "gender", player.gender));
+    row.append(info);
     if (canEditPlayers(event)) {
-      row.append(actionButton("编辑", () => editPlayer(event.id, player.id), false, "ghost-btn"));
       row.append(actionButton("删除", () => removePlayer(event.id, player.id), false, "ghost-btn"));
     }
     list.append(row);
   }
   section.append(list);
-
-  if (canEditPlayers(event)) {
-    const form = el("form", "player-form");
-    form.innerHTML = `
-      <label>球员姓名<input required name="id" maxlength="24" placeholder="球员姓名"></label>
-      <label>性别<select name="gender"><option value="男">男</option><option value="女">女</option></select></label>
-      <button type="submit">加入</button>
-    `;
-    form.addEventListener("submit", (e) => {
-      e.preventDefault();
-      const data = new FormData(form);
-      addPlayer(event.id, String(data.get("id")).trim(), String(data.get("gender")));
-      form.reset();
-    });
-    section.append(form);
-  }
   return section;
 }
 
@@ -412,9 +432,11 @@ function renderEventRanking(event) {
   }
   for (const row of buildEventRanking(event)) {
     const item = el("div", "rank-row");
+    const info = el("div", "player-info");
+    info.append(createAvatar(row.id), el("span", "", `${row.id} · 胜 ${row.wins} · 净胜 ${row.net} · 得分 ${row.scored}`));
     item.append(
       el("span", "badge", `#${row.rank}`),
-      el("div", "", `${row.id} · 胜 ${row.wins} · 净胜 ${row.net} · 得分 ${row.scored}`),
+      info,
       el("strong", "", `${row.totalPoints} 分`),
     );
     section.append(item);
@@ -431,9 +453,11 @@ function renderGlobalLeaderboard() {
   }
   rows.forEach((row, index) => {
     const item = el("div", "rank-row");
+    const info = el("div", "player-info");
+    info.append(createAvatar(row.id), el("span", "", `${row.id} · ${row.events} 次 · 总得分 ${row.scored}`));
     item.append(
       el("span", "badge", `#${index + 1}`),
-      el("div", "", `${row.id} · ${row.events} 次 · 总得分 ${row.scored}`),
+      info,
       el("strong", "", `${row.points} 分`),
     );
     els.globalLeaderboard.append(item);
@@ -522,31 +546,22 @@ function addPlayer(eventId, id, gender) {
   render();
 }
 
-function removePlayer(eventId, playerId) {
-  const event = state.events.find((item) => item.id === eventId);
-  if (!event) return;
-  event.players = event.players.filter((player) => player.id !== playerId);
-  persist();
-  render();
-}
-
-function editPlayer(eventId, playerId) {
-  const event = state.events.find((item) => item.id === eventId);
-  const player = event?.players.find((item) => item.id === playerId);
-  if (!event || !player) return;
-  const nextId = prompt("球员姓名", player.id)?.trim();
-  if (!nextId) return;
-  if (nextId !== player.id && event.players.some((item) => item.id === nextId)) {
-    alert("这个球员姓名已经报名。");
-    return;
-  }
-  const nextGender = prompt("性别：男 / 女", player.gender)?.trim();
-  if (!["男", "女"].includes(nextGender)) {
+function addPlayerFromPrompt(eventId) {
+  const name = prompt("球员姓名")?.trim();
+  if (!name) return;
+  const gender = prompt("性别：男 / 女", "男")?.trim();
+  if (!["男", "女"].includes(gender)) {
     alert("性别只能填写：男 或 女。");
     return;
   }
-  player.id = nextId;
-  player.gender = nextGender;
+  addPlayer(eventId, name, gender);
+}
+
+function removePlayer(eventId, playerId) {
+  const event = state.events.find((item) => item.id === eventId);
+  if (!event) return;
+  if (!confirm(`确定删除球员「${playerId}」吗？`)) return;
+  event.players = event.players.filter((player) => player.id !== playerId);
   persist();
   render();
 }

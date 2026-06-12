@@ -9,6 +9,7 @@ const state = { events: [] };
 let remoteVersion = 0;
 let isOnlineState = false;
 let saveChain = Promise.resolve();
+let pendingSaves = 0;
 const storedAdminToken = localStorage.getItem(ADMIN_KEY);
 let isAdmin = Boolean(storedAdminToken && (storedAdminToken.includes(".") || storedAdminToken === "local-admin"));
 let currentEventId = null;
@@ -67,10 +68,22 @@ function persist() {
     return Promise.resolve();
   }
 
-  saveChain = saveChain.then(saveRemoteState).catch((error) => {
-    console.error(error);
-  });
+  const snapshot = cloneStateSnapshot(state);
+  pendingSaves += 1;
+  saveChain = saveChain
+    .then(() => saveRemoteState(snapshot))
+    .catch((error) => {
+      console.error(error);
+      alert("保存失败，请检查网络后重试。");
+    })
+    .finally(() => {
+      pendingSaves -= 1;
+    });
   return saveChain;
+}
+
+function cloneStateSnapshot(snapshot) {
+  return JSON.parse(JSON.stringify(snapshot));
 }
 
 function applyStateSnapshot(snapshot) {
@@ -83,6 +96,7 @@ function isEditingField() {
 }
 
 async function fetchRemoteState({ silent = false } = {}) {
+  if (silent && pendingSaves > 0) return;
   const response = await fetch(API_STATE_URL, { cache: "no-store" });
   if (!response.ok) throw new Error(`State fetch failed: ${response.status}`);
   const data = await response.json();
@@ -95,14 +109,14 @@ async function fetchRemoteState({ silent = false } = {}) {
   }
 }
 
-async function saveRemoteState() {
+async function saveRemoteState(snapshot) {
   const response = await fetch(API_STATE_URL, {
     method: "PUT",
     headers: {
       "Content-Type": "application/json",
       ...(isAdmin ? { Authorization: `Bearer ${localStorage.getItem(ADMIN_KEY) || ""}` } : {}),
     },
-    body: JSON.stringify({ state, version: remoteVersion }),
+    body: JSON.stringify({ state: snapshot, version: remoteVersion }),
   });
   const data = await response.json().catch(() => ({}));
   if (response.status === 409) {
@@ -135,7 +149,7 @@ async function bootstrap() {
     remoteVersion = data.version;
     if (data.version === 0 && !data.state?.events?.length && localState.events?.length) {
       applyStateSnapshot(localState);
-      await saveRemoteState();
+      await persist();
     } else {
       applyStateSnapshot(data.state);
     }

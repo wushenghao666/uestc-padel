@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0f766e" />
+    <title>UESTC Padel</title>
+    <link rel="manifest" href="./manifest.json" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <header class="app-header">
+      <div>
+        <p class="eyebrow">Americano</p>
+        <h1>Padel 计分</h1>
+      </div>
+      <button id="adminToggle" class="ghost-btn" type="button">管理员</button>
+    </header>
+
+    <main>
+      <section id="adminPanel" class="panel hidden" aria-label="管理员登录">
+        <div class="panel-row">
+          <label>
+            管理员密码
+            <input id="adminPassword" type="password" autocomplete="current-password" placeholder="请输入密码" />
+          </label>
+          <button id="adminLogin" type="button">登录</button>
+        </div>
+        <p id="adminState" class="hint"></p>
+      </section>
+
+      <nav class="tabs" aria-label="主导航">
+        <button class="tab active" data-view="events" type="button">活动</button>
+        <button class="tab" data-view="leaderboard" type="button">总排行</button>
+      </nav>
+
+      <section id="eventsView" class="view">
+        <div id="eventListScreen">
+          <div class="section-head">
+            <h2>活动列表</h2>
+            <button id="newEventButton" class="fab-btn" type="button" aria-label="创建活动">+</button>
+          </div>
+          <div id="eventsList" class="stack"></div>
+        </div>
+
+        <form id="eventForm" class="panel form-grid hidden">
+          <input id="eventId" type="hidden" />
+          <div class="form-title">
+            <button id="backToEventsFromForm" class="ghost-btn" type="button">返回</button>
+            <h2 id="eventFormTitle">创建活动</h2>
+          </div>
+          <label>
+            活动名称
+            <input id="eventName" required maxlength="32" placeholder="周末转转赛" />
+          </label>
+          <label>
+            人数
+            <select id="eventSize">
+              <option value="4">4 人</option>
+            </select>
+          </label>
+          <label>
+            开始时间
+            <input id="eventStartTime" required type="datetime-local" />
+          </label>
+          <label>
+            结束时间
+            <input id="eventEndTime" required type="datetime-local" />
+          </label>
+          <label>
+            地点
+            <input id="eventLocation" required maxlength="40" placeholder="球馆 / 场地" />
+          </label>
+          <label>
+            赛制
+            <select id="eventFormat">
+              <option value="americano">转转赛</option>
+            </select>
+          </label>
+          <label>
+            计分方式
+            <select id="scoreMode">
+              <option value="race">抢分</option>
+              <option value="sets">局制</option>
+            </select>
+          </label>
+          <label>
+            目标
+            <input id="scoreTarget" required min="1" max="99" type="number" value="21" />
+          </label>
+          <div class="form-actions">
+            <button id="saveEvent" type="submit">保存活动</button>
+            <button id="resetEventForm" class="ghost-btn" type="button">清空</button>
+          </div>
+        </form>
+
+        <section id="eventDetailScreen" class="hidden">
+          <div class="section-head detail-head">
+            <button id="backToEventsFromDetail" class="ghost-btn" type="button">返回</button>
+            <div>
+              <h2 id="detailTitle"></h2>
+              <p id="detailMeta" class="meta"></p>
+            </div>
+            <span id="detailStatus" class="status-pill"></span>
+          </div>
+          <div id="detailActions" class="event-actions hidden"></div>
+          <div id="eventDetailBody" class="event-body panel"></div>
+        </section>
+      </section>
+
+      <section id="leaderboardView" class="view hidden">
+        <div class="panel compact">
+          <label>
+            排序
+            <select id="globalSort">
+              <option value="points">积分</option>
+              <option value="events">活动次数</option>
+              <option value="scored">总得分</option>
+            </select>
+          </label>
+        </div>
+        <div id="globalLeaderboard" class="stack"></div>
+      </section>
+    </main>
+
+    <template id="eventTemplate">
+      <button class="event-card" type="button">
+        <div class="event-top">
+          <div>
+            <h2></h2>
+            <p class="meta"></p>
+          </div>
+          <span class="status-pill"></span>
+        </div>
+      </button>
+    </template>
+
+    <script src="./app.js" defer></script>
+  </body>
+</html>

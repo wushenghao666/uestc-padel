@@ -437,7 +437,7 @@ function renderEventDetail() {
     els.detailActions.append(
       actionButton("编辑活动", () => showEventForm(event), status === "ended"),
       actionButton("结束活动", () => endEvent(event.id), status === "ended", "muted-btn"),
-      actionButton("删除活动", () => deleteEvent(event.id), status === "ended", "danger-btn"),
+      actionButton("删除活动", () => deleteEvent(event.id), false, "danger-btn"),
     );
   }
 

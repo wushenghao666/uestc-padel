@@ -9,7 +9,7 @@ This project is a static PWA. It does not need a build step today.
 - Repository: `wushenghao666/uestc-padel`
 - Production branch: `main`
 - Framework preset: `None`
-- Build command: leave empty
+- Build command: `exit 0`
 - Build output directory: `/`
 - Root directory: leave empty
 

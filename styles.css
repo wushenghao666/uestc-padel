@@ -294,16 +294,6 @@ main {
   gap: 10px;
 }
 
-.add-player-btn {
-  width: 40px;
-  height: 40px;
-  min-height: 40px;
-  padding: 0;
-  border-radius: 999px;
-  font-size: 26px;
-  line-height: 1;
-}
-
 .match-row {
   display: grid;
   grid-template-columns: 1fr 86px auto;
@@ -313,6 +303,37 @@ main {
 
 .list {
   display: grid;
+  gap: 8px;
+}
+
+.empty-player-card {
+  display: grid;
+  place-items: center;
+  min-height: 74px;
+  padding: 10px;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  background: #fbfcfb;
+}
+
+.join-player-btn {
+  min-width: 112px;
+  background: var(--surface-soft);
+  border: 1px solid var(--primary);
+  color: var(--primary-dark);
+}
+
+.inline-player-form {
+  display: grid;
+  width: 100%;
+  grid-template-columns: 1fr 96px auto;
+  gap: 8px;
+  align-items: end;
+}
+
+.inline-player-actions {
+  display: grid;
+  grid-template-columns: auto auto;
   gap: 8px;
 }
 
@@ -437,8 +458,13 @@ main {
   .form-grid,
   .panel-row,
   .match-row,
+  .inline-player-form,
   .score-inputs {
     grid-template-columns: 1fr;
+  }
+
+  .inline-player-actions {
+    grid-template-columns: 1fr 1fr;
   }
 
   .event-actions button,

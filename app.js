@@ -348,13 +348,10 @@ function renderPlayers(event) {
   const section = el("section", "subsection");
   const head = el("div", "subsection-head");
   head.append(el("h3", "", `球员 ${event.players.length}/${event.size}`));
-  if (canEditPlayers(event) && event.players.length < event.size) {
-    head.append(actionButton("+", () => addPlayerFromPrompt(event.id), false, "add-player-btn"));
-  }
   section.append(head);
 
   const list = el("div", "list");
-  if (!event.players.length) {
+  if (!event.players.length && !canEditPlayers(event)) {
     list.append(el("div", "empty", "暂无报名"));
   }
   for (const player of event.players) {
@@ -367,8 +364,41 @@ function renderPlayers(event) {
     }
     list.append(row);
   }
+  if (canEditPlayers(event) && event.players.length < event.size) {
+    list.append(renderAddPlayerSlot(event.id));
+  }
   section.append(list);
   return section;
+}
+
+function renderAddPlayerSlot(eventId) {
+  const slot = el("div", "empty-player-card");
+  const joinButton = actionButton("加入", () => showInlinePlayerForm(slot, eventId), false, "join-player-btn");
+  slot.append(joinButton);
+  return slot;
+}
+
+function showInlinePlayerForm(slot, eventId) {
+  slot.innerHTML = "";
+  const form = el("form", "inline-player-form");
+  form.innerHTML = `
+    <label>球员姓名<input required name="name" maxlength="24" placeholder="输入姓名"></label>
+    <label>性别<select name="gender"><option value="男" selected>男</option><option value="女">女</option></select></label>
+    <div class="inline-player-actions">
+      <button type="submit">保存</button>
+      <button class="ghost-btn" type="button">取消</button>
+    </div>
+  `;
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const data = new FormData(form);
+    addPlayer(eventId, String(data.get("name")).trim(), String(data.get("gender")));
+  });
+  form.querySelector(".ghost-btn").addEventListener("click", () => {
+    slot.replaceWith(renderAddPlayerSlot(eventId));
+  });
+  slot.append(form);
+  form.querySelector("input").focus();
 }
 
 function renderMatches(event) {
@@ -544,17 +574,6 @@ function addPlayer(eventId, id, gender) {
   event.players.push({ id, gender });
   persist();
   render();
-}
-
-function addPlayerFromPrompt(eventId) {
-  const name = prompt("球员姓名")?.trim();
-  if (!name) return;
-  const gender = prompt("性别：男 / 女", "男")?.trim();
-  if (!["男", "女"].includes(gender)) {
-    alert("性别只能填写：男 或 女。");
-    return;
-  }
-  addPlayer(eventId, name, gender);
 }
 
 function removePlayer(eventId, playerId) {

@@ -491,7 +491,7 @@ main {
 
 .rank-table-row {
   display: grid;
-  grid-template-columns: 54px minmax(150px, 1.5fr) repeat(4, minmax(64px, 0.7fr));
+  grid-template-columns: 54px minmax(76px, 1.2fr) repeat(4, minmax(64px, 0.7fr));
   gap: 8px;
   align-items: center;
   min-width: 620px;
@@ -500,7 +500,7 @@ main {
 }
 
 .rank-table-5 .rank-table-row {
-  grid-template-columns: 54px minmax(150px, 1.5fr) repeat(3, minmax(72px, 0.7fr));
+  grid-template-columns: 54px minmax(76px, 1.2fr) repeat(3, minmax(72px, 0.7fr));
   min-width: 540px;
 }
 
